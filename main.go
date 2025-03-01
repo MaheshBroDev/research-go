@@ -285,7 +285,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		http.ServeFile(w, r, "./verification_file")
+		http.ServeFile(w, r, "verification_file")
 	})
 
 	log.Println("Starting API server on port 8080...")
