@@ -281,7 +281,7 @@ func main() {
 
 	http.HandleFunc("/metrics", performanceLoggingMiddleware(getMetrics, "/metrics"))
 	http.HandleFunc("/loaderio-aa546cd12f42ab3d134b3ac008a0ed4c.txt", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "loaderio-aa546cd12f42ab3d134b3ac008a0ed4c.txt")
+		http.ServeFile(w, r, "./verification_file")
 	})
 
 	log.Println("Starting API server on port 8080...")
