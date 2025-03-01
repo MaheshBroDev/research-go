@@ -280,7 +280,11 @@ func main() {
 	http.HandleFunc("/test/loop", authMiddleware(performanceLoggingMiddleware(loopCheck, "/test/loop")))
 
 	http.HandleFunc("/metrics", performanceLoggingMiddleware(getMetrics, "/metrics"))
-	http.HandleFunc("/loaderio-aa546cd12f42ab3d134b3ac008a0ed4c.txt", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/loaderio-aa546cd12f42ab3d134b3ac008a0ed4c", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		http.ServeFile(w, r, "./verification_file")
 	})
 
