@@ -271,6 +271,155 @@ func getMetrics(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "performance_metrics_go.csv")
 }
 
+type SortResult struct {
+	Algorithm   string        `json:"algorithm"`
+	ElapsedTime time.Duration `json:"elapsed_time"`
+	SortedList  []int         `json:"sorted_list"`
+	CPUPercent  float64       `json:"cpu_percent"`
+	MemoryUsage float64       `json:"memory_usage_kb"`
+}
+
+func bubbleSort(list []int) ([]int, time.Duration) {
+	start := time.Now()
+	n := len(list)
+	for i := 0; i < n-1; i++ {
+		for j := 0; j < n-i-1; j++ {
+			if list[j] > list[j+1] {
+				list[j], list[j+1] = list[j+1], list[j]
+			}
+		}
+	}
+	elapsed := time.Since(start)
+	return list, elapsed
+}
+
+func quickSort(list []int) ([]int, time.Duration) {
+	start := time.Now()
+	quickSortHelper(list, 0, len(list)-1)
+	elapsed := time.Since(start)
+	return list, elapsed
+}
+
+func quickSortHelper(list []int, low, high int) {
+	if low < high {
+		partitionIndex := partition(list, low, high)
+
+		quickSortHelper(list, low, partitionIndex-1)
+		quickSortHelper(list, partitionIndex+1, high)
+	}
+}
+
+func partition(list []int, low, high int) int {
+	pivot := list[high]
+	i := low - 1
+
+	for j := low; j < high; j++ {
+		if list[j] < pivot {
+			i++
+			list[i], list[j] = list[j], list[i]
+		}
+	}
+	list[i+1], list[high] = list[high], list[i+1]
+	return i + 1
+}
+
+// Note: Binary Sort is typically used to describe inserting elements into an already sorted list
+// This implementation will sort the whole list using binary insertion
+func binarySort(list []int) ([]int, time.Duration) {
+	start := time.Now()
+	for i := 1; i < len(list); i++ {
+		key := list[i]
+		left := 0
+		right := i - 1
+
+		// Find the correct position to insert the key using binary search
+		for left <= right {
+			mid := left + (right-left)/2
+			if key < list[mid] {
+				right = mid - 1
+			} else {
+				left = mid + 1
+			}
+		}
+
+		// Shift elements to make space for the key
+		for j := i - 1; j >= left; j-- {
+			list[j+1] = list[j]
+		}
+
+		// Insert the key at the correct position
+		list[left] = key
+	}
+
+	elapsed := time.Since(start)
+	return list, elapsed
+}
+
+func sortHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var input struct {
+		List []int `json:"list"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	list := input.List
+
+	// Perform sorts and capture metrics
+	bubbleSorted, bubbleTime, bubbleCPU, bubbleMem := sortWithMetrics(bubbleSort, copyList(list))
+	quickSorted, quickTime, quickCPU, quickMem := sortWithMetrics(quickSort, copyList(list))
+	binarySorted, binaryTime, binaryCPU, binaryMem := sortWithMetrics(binarySort, copyList(list))
+
+	results := []SortResult{
+		{Algorithm: "Bubble Sort", ElapsedTime: bubbleTime, SortedList: bubbleSorted, CPUPercent: bubbleCPU, MemoryUsage: bubbleMem},
+		{Algorithm: "Quick Sort", ElapsedTime: quickTime, SortedList: quickSorted, CPUPercent: quickCPU, MemoryUsage: quickMem},
+		{Algorithm: "Binary Sort", ElapsedTime: binaryTime, SortedList: binarySorted, CPUPercent: binaryCPU, MemoryUsage: binaryMem},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+type sortFunc func([]int) ([]int, time.Duration)
+
+func sortWithMetrics(sortFunc sortFunc, list []int) ([]int, time.Duration, float64, float64) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	memBefore := float64(m.Alloc)
+
+	cpuPercentChan := make(chan []float64, 1)
+	go func() {
+		cpuPercent, _ := cpu.Percent(0, false)
+		cpuPercentChan <- cpuPercent
+	}()
+
+	sortedList, elapsedTime := sortFunc(list)
+
+	cpuPercent := <-cpuPercentChan
+	cpuUsage := cpuPercent[0]
+
+	runtime.ReadMemStats(&m)
+	memAfter := float64(m.Alloc)
+	memoryUsage := float64(memAfter-memBefore) / 1024
+
+	return sortedList, elapsedTime, cpuUsage, memoryUsage
+}
+
+// Helper function to copy a list
+func copyList(list []int) []int {
+	newList := make([]int, len(list))
+	copy(newList, list)
+	return newList
+}
+
 func main() {
 	http.HandleFunc("/login", performanceLoggingMiddleware(login, "/login"))
 	http.HandleFunc("/items", authMiddleware(performanceLoggingMiddleware(getItems, "/items")))
@@ -287,6 +436,8 @@ func main() {
 		}
 		http.ServeFile(w, r, "verification_file")
 	})
+
+	http.HandleFunc("/sort", authMiddleware(performanceLoggingMiddleware(sortHandler, "/sort")))
 
 	log.Println("Starting API server on port 8080...")
 	http.ListenAndServe(":8080", nil)
