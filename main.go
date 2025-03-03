@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -57,29 +56,12 @@ func logPerformanceMetrics(start time.Time, endpoint string) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	file, err := os.OpenFile("performance_metrics_go.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile("performance_metrics_go.json", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Println("Error opening CSV file:", err)
+		log.Println("Error opening JSON file:", err)
 		return
 	}
 	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	// Check if file is empty to write headers
-	fileInfo, err := file.Stat()
-	if err != nil {
-		log.Println("Error getting file info:", err)
-		return
-	}
-	if fileInfo.Size() == 0 {
-		headers := []string{"Timestamp", "Endpoint", "Allocated Memory (bytes)", "Total Allocated Memory (bytes)", "System Memory (bytes)", "Garbage Collections", "Elapsed Time", "CPU Usage (%)", "Memory Usage (KB)"}
-		if err := writer.Write(headers); err != nil {
-			log.Println("Error writing headers to CSV file:", err)
-			return
-		}
-	}
 
 	// Capture CPU and Memory usage
 	cpuPercent, err := cpu.Percent(0, false)
@@ -93,20 +75,21 @@ func logPerformanceMetrics(start time.Time, endpoint string) {
 		return
 	}
 
-	record := []string{
-		time.Now().Format(time.RFC3339),
-		endpoint,
-		fmt.Sprintf("%d", m.Alloc),
-		fmt.Sprintf("%d", m.TotalAlloc),
-		fmt.Sprintf("%d", m.Sys),
-		fmt.Sprintf("%d", m.NumGC),
-		elapsed.String(),
-		fmt.Sprintf("%.2f", cpuPercent[0]),
-		fmt.Sprintf("%.2f", float64(memInfo.Used)/1024),
+	record := map[string]interface{}{
+		"Timestamp":            time.Now().Format(time.RFC3339),
+		"Endpoint":             endpoint,
+		"AllocatedMemory":      m.Alloc,
+		"TotalAllocatedMemory": m.TotalAlloc,
+		"SystemMemory":         m.Sys,
+		"GarbageCollections":   m.NumGC,
+		"ElapsedTime":          elapsed.String(),
+		"CPUUsage":             cpuPercent[0],
+		"MemoryUsageKB":        float64(memInfo.Used) / 1024,
 	}
 
-	if err := writer.Write(record); err != nil {
-		log.Println("Error writing to CSV file:", err)
+	encoder := json.NewEncoder(file)
+	if err := encoder.Encode(record); err != nil {
+		log.Println("Error writing to JSON file:", err)
 	}
 }
 
@@ -264,11 +247,11 @@ func loopCheck(w http.ResponseWriter, r *http.Request) {
 
 // Get metrics csv file
 func getMetrics(w http.ResponseWriter, r *http.Request) {
-	if _, err := os.Stat("performance_metrics_go.csv"); os.IsNotExist(err) {
+	if _, err := os.Stat("performance_metrics_go.json"); os.IsNotExist(err) {
 		http.Error(w, "Metrics file not found", http.StatusNotFound)
 		return
 	}
-	http.ServeFile(w, r, "performance_metrics_go.csv")
+	http.ServeFile(w, r, "performance_metrics_go.json")
 }
 
 type SortResult struct {
