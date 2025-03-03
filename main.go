@@ -32,6 +32,14 @@ type Item struct {
 	Value string `json:"value"`
 }
 
+// DockerStats struct to hold docker metrics
+type DockerStats struct {
+	Timestamp         string  `json:"timestamp"`
+	CPUUsage          float64 `json:"cpu_usage"`
+	MemoryUsage       float64 `json:"memory_usage"`
+	ActiveConnections float64 `json:"active_connections"`
+}
+
 // Database connection
 func init() {
 	dbUser := os.Getenv("DB_USER")
@@ -91,6 +99,66 @@ func logPerformanceMetrics(start time.Time, endpoint string) {
 	if err := encoder.Encode(record); err != nil {
 		log.Println("Error writing to JSON file:", err)
 	}
+}
+
+// Function to log Docker stats
+func logDockerStats() {
+	ticker := time.NewTicker(5 * time.Second) // Collect stats every 5 seconds
+	quit := make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				timestamp := time.Now().Format(time.RFC3339)
+
+				// Get CPU usage
+				cpuPercent, err := cpu.Percent(0, false)
+				if err != nil {
+					log.Println("Error getting CPU usage:", err)
+					continue
+				}
+
+				// Get memory usage
+				memInfo, err := mem.VirtualMemory()
+				if err != nil {
+					log.Println("Error getting memory usage:", err)
+					continue
+				}
+
+				// Get active connections (example: total bytes sent)
+				// netIO, err := net.IOCounters(false)
+				// if err != nil {
+				// 	log.Println("Error getting network I/O:", err)
+				// 	continue
+				// }
+				// activeConnections := float64(netIO[0].BytesSent)
+
+				dockerStats := DockerStats{
+					Timestamp:         timestamp,
+					CPUUsage:          cpuPercent[0],
+					MemoryUsage:       float64(memInfo.Used) / float64(memInfo.Total) * 100, // Memory usage in percentage
+					ActiveConnections: 0,
+				}
+
+				file, err := os.OpenFile("docker_metrics_go.json", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					log.Println("Error opening docker_metrics_go.json:", err)
+					continue
+				}
+				defer file.Close()
+
+				encoder := json.NewEncoder(file)
+				if err := encoder.Encode(dockerStats); err != nil {
+					log.Println("Error writing to docker_metrics_go.json:", err)
+				}
+
+			case <-quit:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
 }
 
 // Middleware to log performance metrics
@@ -254,6 +322,15 @@ func getMetrics(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "performance_metrics_go.json")
 }
 
+// Get docker metrics json file
+func getDockerMetrics(w http.ResponseWriter, r *http.Request) {
+	if _, err := os.Stat("docker_metrics_go.json"); os.IsNotExist(err) {
+		http.Error(w, "Docker metrics file not found", http.StatusNotFound)
+		return
+	}
+	http.ServeFile(w, r, "docker_metrics_go.json")
+}
+
 type SortResult struct {
 	Algorithm   string        `json:"algorithm"`
 	ElapsedTime time.Duration `json:"elapsed_time"`
@@ -299,7 +376,7 @@ func partition(list []int, low, high int) int {
 	for j := low; j < high; j++ {
 		if list[j] < pivot {
 			i++
-			list[i], list[j] = list[j], list[i]
+			list[i], list[j] = list[i], list[j]
 		}
 	}
 	list[i+1], list[high] = list[high], list[i+1]
@@ -404,6 +481,7 @@ func copyList(list []int) []int {
 }
 
 func main() {
+	logDockerStats()
 	http.HandleFunc("/login", performanceLoggingMiddleware(login, "/login"))
 	http.HandleFunc("/items", authMiddleware(performanceLoggingMiddleware(getItems, "/items")))
 	http.HandleFunc("/item", authMiddleware(performanceLoggingMiddleware(getSingleItem, "/item")))
@@ -412,6 +490,7 @@ func main() {
 	http.HandleFunc("/test/loop", authMiddleware(performanceLoggingMiddleware(loopCheck, "/test/loop")))
 
 	http.HandleFunc("/metrics", performanceLoggingMiddleware(getMetrics, "/metrics"))
+	http.HandleFunc("/docker_metrics", getDockerMetrics)
 	http.HandleFunc("/loaderio-aa546cd12f42ab3d134b3ac008a0ed4c", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
