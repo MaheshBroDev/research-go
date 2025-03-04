@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"time"
@@ -480,6 +481,18 @@ func copyList(list []int) []int {
 	return newList
 }
 
+func loaderioHandler(w http.ResponseWriter, r *http.Request) {
+	re := regexp.MustCompile(`^/loaderio-([a-zA-Z0-9]{32})\.txt$`)
+	matches := re.FindStringSubmatch(r.URL.Path)
+	if len(matches) != 2 {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	filename := matches[1]
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "loaderio-%s", filename)
+}
+
 func main() {
 	logDockerStats()
 	http.HandleFunc("/login", performanceLoggingMiddleware(login, "/login"))
@@ -491,14 +504,7 @@ func main() {
 
 	http.HandleFunc("/metrics", performanceLoggingMiddleware(getMetrics, "/metrics"))
 	http.HandleFunc("/docker_metrics", getDockerMetrics)
-	http.HandleFunc("/loaderio-aa546cd12f42ab3d134b3ac008a0ed4c", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		http.ServeFile(w, r, "verification_file")
-	})
-
+	http.HandleFunc("/loaderio-{filename:[a-zA-Z0-9]{32}}.txt", loaderioHandler)
 	http.HandleFunc("/sort", authMiddleware(performanceLoggingMiddleware(sortHandler, "/sort")))
 
 	log.Println("Starting API server on port 8080...")
