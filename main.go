@@ -507,7 +507,10 @@ func main() {
 	http.HandleFunc("/sort", authMiddleware(performanceLoggingMiddleware(sortHandler, "/sort")))
 
 	http.HandleFunc("/loaderio-", loaderioHandler)
-
+	http.HandleFunc("/loaderio-ec6d3c2803480d0d7a8cd4d1d95ece88.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprint(w, "loaderio-ec6d3c2803480d0d7a8cd4d1d95ece88")
+	})
 	log.Println("Starting API server on port 8080...")
 	http.ListenAndServe(":8080", nil)
 }
