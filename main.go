@@ -504,8 +504,9 @@ func main() {
 
 	http.HandleFunc("/metrics", performanceLoggingMiddleware(getMetrics, "/metrics"))
 	http.HandleFunc("/docker_metrics", getDockerMetrics)
-	http.HandleFunc("/loaderio-{filename:[a-zA-Z0-9]{32}}.txt", loaderioHandler)
 	http.HandleFunc("/sort", authMiddleware(performanceLoggingMiddleware(sortHandler, "/sort")))
+
+	http.HandleFunc("/loaderio-", loaderioHandler)
 
 	log.Println("Starting API server on port 8080...")
 	http.ListenAndServe(":8080", nil)
