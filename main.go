@@ -377,7 +377,7 @@ func partition(list []int, low, high int) int {
 	for j := low; j < high; j++ {
 		if list[j] < pivot {
 			i++
-			list[i], list[j] = list[i], list[j]
+			list[i], list[j] = list[j], list[i]
 		}
 	}
 	list[i+1], list[high] = list[high], list[i+1]
@@ -404,7 +404,7 @@ func binarySort(list []int) ([]int, time.Duration) {
 		}
 
 		// Shift elements to make space for the key
-		for j := i - 1; j >= left; j-- {
+		for j := i - 1; j >= left; j++ {
 			list[j+1] = list[j]
 		}
 
@@ -493,6 +493,47 @@ func loaderioHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "loaderio-%s", filename)
 }
 
+func deleteItem(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		http.Error(w, "Missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid id parameter type, Must be a number", http.StatusBadRequest)
+		return
+	}
+
+	_, err = db.Exec("DELETE FROM items WHERE id = ?", id)
+	if err != nil {
+		http.Error(w, "Error deleting item", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Item deleted")
+}
+
+func deleteLastItem(w http.ResponseWriter, r *http.Request) {
+	var id int
+	err := db.QueryRow("SELECT id FROM items ORDER BY id DESC LIMIT 1").Scan(&id)
+	if err != nil {
+		http.Error(w, "No items found", http.StatusNotFound)
+		return
+	}
+
+	_, err = db.Exec("DELETE FROM items WHERE id = ?", id)
+	if err != nil {
+		http.Error(w, "Error deleting last item", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Last item deleted")
+}
+
 func main() {
 	logDockerStats()
 	http.HandleFunc("/login", performanceLoggingMiddleware(login, "/login"))
@@ -505,6 +546,9 @@ func main() {
 	http.HandleFunc("/metrics", performanceLoggingMiddleware(getMetrics, "/metrics"))
 	http.HandleFunc("/docker_metrics", getDockerMetrics)
 	http.HandleFunc("/sort", authMiddleware(performanceLoggingMiddleware(sortHandler, "/sort")))
+
+	http.HandleFunc("/item/delete", authMiddleware(performanceLoggingMiddleware(deleteItem, "/item/delete")))
+	http.HandleFunc("/item/last/delete", authMiddleware(performanceLoggingMiddleware(deleteLastItem, "/item/last/delete")))
 
 	http.HandleFunc("/loaderio-", loaderioHandler)
 	http.HandleFunc("/loaderio-ec6d3c2803480d0d7a8cd4d1d95ece88.txt", func(w http.ResponseWriter, r *http.Request) {
