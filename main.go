@@ -493,7 +493,49 @@ func loaderioHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "loaderio-%s", filename)
 }
 
+// Update Item (Authenticated)
+func updateItem(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		http.Error(w, "Missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid id parameter type, Must be a number", http.StatusBadRequest)
+		return
+	}
+
+	var updatedItem Item
+	err = json.NewDecoder(r.Body).Decode(&updatedItem)
+	if err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	_, err = db.Exec("UPDATE items SET name = ?, value = ? WHERE id = ?", updatedItem.Name, updatedItem.Value, id)
+	if err != nil {
+		http.Error(w, "Error updating item", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Item updated")
+}
+
+// Delete Item (Authenticated)
 func deleteItem(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	idStr := r.URL.Query().Get("id")
 	if idStr == "" {
 		http.Error(w, "Missing id parameter", http.StatusBadRequest)
@@ -516,7 +558,13 @@ func deleteItem(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Item deleted")
 }
 
+// Delete Last Item (Authenticated)
 func deleteLastItem(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var id int
 	err := db.QueryRow("SELECT id FROM items ORDER BY id DESC LIMIT 1").Scan(&id)
 	if err != nil {
@@ -547,6 +595,7 @@ func main() {
 	http.HandleFunc("/docker_metrics", getDockerMetrics)
 	http.HandleFunc("/sort", authMiddleware(performanceLoggingMiddleware(sortHandler, "/sort")))
 
+	http.HandleFunc("/item/update", authMiddleware(performanceLoggingMiddleware(updateItem, "/item/update")))
 	http.HandleFunc("/item/delete", authMiddleware(performanceLoggingMiddleware(deleteItem, "/item/delete")))
 	http.HandleFunc("/item/last/delete", authMiddleware(performanceLoggingMiddleware(deleteLastItem, "/item/last/delete")))
 
