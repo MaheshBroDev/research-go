@@ -404,7 +404,7 @@ func binarySort(list []int) ([]int, time.Duration) {
 		}
 
 		// Shift elements to make space for the key
-		for j := i - 1; j >= left; j++ {
+		for j := i - 1; j >= left; j-- {
 			list[j+1] = list[j]
 		}
 
